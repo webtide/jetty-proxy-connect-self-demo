@@ -31,6 +31,7 @@ public class ConnectSelfServerTest
     {
         connectServer = new ConnectSelfServer(0,0);
         connectServer.getServer().start();
+        connectServer.getServer().setDumpAfterStart(true);
         sslContextFactory = new SslContextFactory();
         sslContextFactory.setEndpointIdentificationAlgorithm(null);
         sslContextFactory.setTrustAll(true);
@@ -51,7 +52,14 @@ public class ConnectSelfServerTest
         return socket;
     }
 
-    private SSLSocket wrapSocket(Socket socket) throws Exception
+    private Socket newTlsSocket() throws IOException
+    {
+        Socket socket = new Socket("localhost", connectServer.getTlsConnector().getLocalPort());
+        socket.setSoTimeout(20000);
+        return wrapSocket(socket);
+    }
+
+    private SSLSocket wrapSocket(Socket socket) throws IOException
     {
         SSLContext sslContext = sslContextFactory.getSslContext();
         SSLSocketFactory socketFactory = sslContext.getSocketFactory();
@@ -86,13 +94,11 @@ public class ConnectSelfServerTest
             // Expect 200 OK from the CONNECT request
             HttpTester.Input httpInput = HttpTester.from(socket.getInputStream());
             HttpTester.Response connectResponse = HttpTester.parseResponse(httpInput);
-            System.out.println("Connect Response: " +  connectResponse + "\n" + connectResponse.getContent());
             assertEquals(HttpStatus.OK_200, connectResponse.getStatus());
 
             output.write(httpRequest.getBytes(UTF_8));
 
             HttpTester.Response httpResponse = HttpTester.parseResponse(httpInput);
-            System.out.println("HTTP Response: " +  httpResponse + "\n" + httpResponse.getContent());
             assertEquals(HttpStatus.MOVED_PERMANENTLY_301, httpResponse.getStatus());
             assertEquals("https://webtide.com/", httpResponse.get(HttpHeader.LOCATION));
         }
@@ -108,7 +114,7 @@ public class ConnectSelfServerTest
                 "\r\n";
 
         String httpRequest = "" +
-                "GET / HTTP/1.1\r\n" +
+                "GET /?example=value HTTP/1.1\r\n" +
                 "Host: webtide.com\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
@@ -123,14 +129,12 @@ public class ConnectSelfServerTest
             // Expect 200 OK from the CONNECT request
             HttpTester.Input httpInput = HttpTester.from(socket.getInputStream());
             HttpTester.Response connectResponse = HttpTester.parseResponse(httpInput);
-            System.out.println("Connect Response: " +  connectResponse + "\n" + connectResponse.getContent());
             assertEquals(HttpStatus.OK_200, connectResponse.getStatus());
 
             // Upgrade the socket to SSL
             try (SSLSocket sslSocket = wrapSocket(socket))
             {
                 output = sslSocket.getOutputStream();
-
                 output.write(httpRequest.getBytes(UTF_8));
 
                 HttpTester.Response httpResponse = HttpTester.parseResponse(HttpTester.from(sslSocket.getInputStream()));
@@ -140,4 +144,30 @@ public class ConnectSelfServerTest
         }
     }
 
+    /**
+     * Issue a GET request directly to the proxy.
+     * <p>
+     *     This essentially just tests that the TLS ServerConnector works.
+     * </p>
+     */
+    @Test
+    public void getProxySecured() throws Exception
+    {
+        String httpRequest = "" +
+                "GET / HTTP/1.1\r\n" +
+                "Host: local\r\n" +
+                "Connection: close\r\n" +
+                "\r\n";
+
+        try (Socket socket = newTlsSocket())
+        {
+            OutputStream output = socket.getOutputStream();
+
+            output.write(httpRequest.getBytes(UTF_8));
+
+            HttpTester.Response httpResponse = HttpTester.parseResponse(HttpTester.from(socket.getInputStream()));
+            assertEquals(HttpStatus.BAD_GATEWAY_502, httpResponse.getStatus());
+            assertThat(httpResponse.getContent(), containsString("<p>Problem accessing /"));
+        }
+    }
 }

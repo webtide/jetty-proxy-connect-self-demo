@@ -30,13 +30,14 @@ public class ConnectSelfServer
         final int PORT = 8080;
 
         ConnectSelfServer connectServer = new ConnectSelfServer(PORT, SECURE_PORT);
+        connectServer.getServer().setDumpAfterStart(true);
         connectServer.getServer().start();
         connectServer.getServer().join();
     }
 
     private Server server;
     private ServerConnector httpConnector;
-    private ServerConnector sslConnector;
+    private ServerConnector tlsConnector;
 
     public ConnectSelfServer(int plainTextPort, int securePort) throws IOException
     {
@@ -60,20 +61,20 @@ public class ConnectSelfServer
         HttpConfiguration httpsConfig = new HttpConfiguration(httpConfig);
         httpsConfig.addCustomizer(new SecureRequestCustomizer());
 
-        sslConnector = new ServerConnector(server,
+        tlsConnector = new ServerConnector(server,
                 new SslConnectionFactory(sslContextFactory, HttpVersion.HTTP_1_1.asString()),
                 new HttpConnectionFactory(httpsConfig));
-        sslConnector.setPort(securePort);
-        //sslConnector.addFirstConnectionFactory(new ProxyConnectionFactory());
+        tlsConnector.setPort(securePort);
+        // tlsConnector.addFirstConnectionFactory(new ProxyConnectionFactory());
 
-        server.addConnector(sslConnector);
+        server.addConnector(tlsConnector);
 
         ServletContextHandler proxyContext = new ServletContextHandler();
         proxyContext.setContextPath("/");
-        proxyContext.addServlet(AsyncProxyServlet.class, "/*");
+        proxyContext.addServlet(SelfProxyServlet.class, "/*");
 
         HandlerList handlers = new HandlerList();
-        handlers.addHandler(new ConnectSelfHandler("localhost", securePort));
+        handlers.addHandler(new ConnectSelfHandler(this));
         handlers.addHandler(proxyContext);
         handlers.addHandler(new DefaultHandler());
 
@@ -90,9 +91,9 @@ public class ConnectSelfServer
         return httpConnector;
     }
 
-    public ServerConnector getSslConnector()
+    public ServerConnector getTlsConnector()
     {
-        return sslConnector;
+        return tlsConnector;
     }
 
     public SslContextFactory getSslContextFactory() throws IOException
@@ -102,12 +103,10 @@ public class ConnectSelfServer
         Resource keystore = findResource("etc/keystores/proxy.p12");
 
         ssl.setKeyStoreResource(keystore);
+        ssl.setKeyStoreType("PKCS12");
         ssl.setKeyStorePassword("bazbaz");
         ssl.setKeyManagerPassword("bazbaz");
 
-        Resource truststore = findResource("etc/ca/truststore.p12");
-        ssl.setTrustStoreResource(truststore);
-        ssl.setTrustStorePassword("foobar");
         return ssl;
     }
 
