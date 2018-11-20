@@ -48,13 +48,6 @@ openssl pkcs12 \
     -passin pass:${KEY_PASS} \
     -passout pass:${KEY_PASS}
 
-# echo "## Importing certificates into PKCS 12 keystore"
-# keytool -importkeystore \
-#     -deststorepass "${KEY_PASS}" \
-#     -destkeystore keystores/proxy.p12 \
-#     -srckeystore keystores/proxy-openssl.p12 \
-#     -srcstoretype PKCS12
-
 echo "## Importing CA into Proxy Keystore"
 keytool -import -noprompt \
     -alias TestCA \
@@ -63,13 +56,5 @@ keytool -import -noprompt \
     -keystore keystores/proxy.p12 \
     -storetype PKCS12 \
     -storepass "${KEY_PASS}"
-# 
-# echo "## Importing X509 Signed Proxy Certificate into Keystore"
-# keytool -import \
-#     -alias Proxy \
-#     -file keystores/proxy.crt \
-#     -keystore keystores/proxy.p12 \
-#     -storetype PKCS12 \
-#     -storepass "${KEY_PASS}"
 
 
